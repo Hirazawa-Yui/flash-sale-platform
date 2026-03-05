@@ -1,0 +1,59 @@
+server:
+  port: 8081
+  tomcat:
+    threads:
+      max: 200                # Tomcat最大线程数（默认200，压测时需要调大）
+      min-spare: 100           # 最小空闲线程
+    accept-count: 1000         # 等待队列长度
+    max-connections: 2000      # 最大连接数
+spring:
+  application:
+    name: flash-sale-platform
+  # 本机私有配置（数据库/Redis 密码、图片上传目录）放在 application-local.yaml，
+  # 该文件已 gitignore，不会进版本库。文件不存在时这里的 include 会被静默跳过，
+  # 届时密码取下面的空默认值 —— 连接会明确失败，而不是悄悄连上别人的库。
+  # 换机器：复制 application-local.yaml.example 为 application-local.yaml 填自己的值。
+  profiles:
+    include: local
+  datasource:
+    driver-class-name: com.mysql.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/hm_ecommerce?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+    username: root
+    password: ${MYSQL_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10    # 压测时由 application-loadtest.yaml 覆盖为 50
+      minimum-idle: 10
+  redis:
+    host: localhost
+    port: 6379
+    password: ${REDIS_PASSWORD:}
+    # db11 里存着 2000 个与 RequestTest/tokens.csv 对齐的压测 token。
+    # 改这个库号前先确认那份 CSV 还对得上，否则压测会静默全 401。
+    database: 11
+    lettuce:
+      pool:
+        max-active: 8        # 注意：普通命令走共享连接，这个池只影响 executePipelined
+        max-idle: 50
+        min-idle: 10
+        time-between-eviction-runs: 10s
+  jackson:
+    default-property-inclusion: non_null # JSON处理时忽略非空字段
+
+# RocketMQ 配置
+rocketmq:
+  name-server: 127.0.0.1:9876
+  producer:
+    group: seckill-producer-group
+    send-message-timeout: 3000
+    retry-times-when-send-failed: 2
+
+# 应用自定义配置
+hmdp:
+  # 图片上传根目录。这里给的是通用的相对路径，本机真实路径由 application-local.yaml 覆盖。
+  upload-dir: ${HMDP_UPLOAD_DIR:./imgs}
+
+mybatis-plus:
+  type-aliases-package: com.hmdp.entity # 别名扫描包
+logging:
+  level:
+    com.hmdp: debug
