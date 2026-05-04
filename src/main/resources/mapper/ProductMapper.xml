@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hmdp.mapper.ProductMapper">
+
+    <select id="queryProductOfStore" resultType="com.hmdp.entity.Product" parameterType="java.lang.Long">
+        SELECT
+            v.`id`, v.`shop_id`, v.`title`, v.`sub_title`, v.`description`,
+            v.`image`, v.`price`, v.`original_price`, v.`type`, sp.`stock` , sp.begin_time , sp.end_time
+        FROM tb_product v
+        LEFT JOIN tb_seckill_product sp ON v.id = sp.product_id
+        WHERE v.shop_id = #{shopId} AND v.status = 1
+    </select>
+
+    <select id="querySeckillProducts" resultType="com.hmdp.entity.Product">
+        SELECT
+            v.`id`, v.`shop_id`, v.`title`, v.`sub_title`, v.`description`,
+            v.`image`, v.`price`, v.`original_price`, v.`type`, sp.`stock`, sp.begin_time, sp.end_time
+        FROM tb_product v
+        INNER JOIN tb_seckill_product sp ON v.id = sp.product_id
+        WHERE v.type = 1 AND v.status = 1
+    </select>
+</mapper>
