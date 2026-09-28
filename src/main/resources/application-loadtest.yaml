@@ -1,0 +1,57 @@
+# 压测专用 profile —— 只写对 application.yaml 的覆盖项
+#
+# 启动：
+#   "D:/Program Files/Microsoft/jdk-11.0.12.7-hotspot/bin/java" -jar \
+#     target/flash-sale-platform-0.0.1-SNAPSHOT.jar --spring.profiles.active=loadtest
+#
+# 【必须用 JDK 11】PATH 上的 JDK 21 会让 Spring Boot 2.3.12 启动失败
+# （Spring 5.2 的 CGLIB/ASM 不认识 class file v65）。
+
+logging:
+  level:
+    root: info
+    # 【关键】关掉 debug。application.yaml 里配的是 debug，而 MyBatis 给每条语句建的
+    # logger 名是 <mapper接口全限定名>.<语句id>（如 com.hmdp.mapper.OrderMapper.selectCount），
+    # 正好落在 com.hmdp 下 —— 于是每条 SQL 会打三行（==> Preparing / ==> Parameters / <== Total），
+    # 走 Boot 2.3 默认的**同步** ConsoleAppender。
+    #
+    # 危害是不对称的：老路径每次请求在请求线程上跑 3~4 条 SQL = 9~12 行日志，
+    # 新路径的请求线程执行 0 条 SQL。2000 并发下这是上万次串行控制台写，
+    # 惩罚几乎全落在老路径身上 —— 也就是说，开着 debug 测出来的数字
+    # 反映的是日志配置，不是架构差异，而且新路径的耗时也会因此变得没法解释。
+    com.hmdp: warn
+    com.hmdp.mapper: warn
+
+server:
+  tomcat:
+    # 保持 200，不再往上调：2000 个 JMeter 用户是**连接层并发**，不是 2000 个执行线程。
+    # 这个差额正是服务端埋点数字和 JMeter 数字不同的原因，两者回答的是不同问题。
+    threads:
+      max: 200
+      min-spare: 100
+    accept-count: 2000
+    max-connections: 2000
+
+spring:
+  datasource:
+    hikari:
+      # 10 个连接会让 MQ 消费端排空变慢、拖长 drain 等待时间（消费线程默认 20）。
+      # connection-timeout 保持默认 30s 不动 —— 调短会把连接池饥饿从"变慢"变成"报错"，
+      # 反而掩盖了要测的现象。
+      maximum-pool-size: 50
+      minimum-idle: 20
+  redis:
+    lettuce:
+      pool:
+        # 【结论】这里配的池在 Boot 默认下**不生效**（shareNativeConnection=true，
+        # 所有命令共用一条多路复用连接），实测 connected_clients 恒为 44 全程不增长。
+        #
+        # 曾尝试用自定义 LettuceConnectionFactory 把 shareNativeConnection 关掉以启用连接池，
+        # 结果**更慢**：每个命令都要向 Apache Commons Pool 借还连接，
+        # 400 并发下 拦截器Redis 的 p50 从 0.88ms 恶化到 35ms。
+        # 而共享连接本身在 400 并发下只有 0.35~0.9ms/命令，从来不是瓶颈。
+        # 所以保持 Boot 默认、不动它。下面只是把 max-active(8) < max-idle(50) 这个矛盾值改成一致。
+        max-active: 64
+        max-idle: 64
+        min-idle: 16
+        time-between-eviction-runs: 30s
